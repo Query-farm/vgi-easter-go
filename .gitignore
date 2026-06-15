@@ -1,0 +1,15 @@
+# Built binary
+/vgi-easter-go
+vgi-easter-go.exe
+
+# Go build/test artifacts (compiled test binaries live at the package root;
+# the sqllogictest files under test/sql/*.test are NOT ignored).
+/*.test
+*.out
+coverage.out
+
+# Local tooling
+.claude/
+duckdb_unittest_tempdir/
+hb/
+.DS_Store

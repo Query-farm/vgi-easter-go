@@ -1,0 +1,112 @@
+# Copyright 2026 Query Farm LLC - https://query.farm
+#
+# Unit tests (go test) + the sqllogictest extension suite (test/sql/*.test) run
+# against the easter worker through the real signed `vgi` DuckDB community
+# extension via a prebuilt standalone `haybarn-unittest`. Both jobs run on
+# Linux, macOS, and Windows. See ci/README.md for the design.
+#
+# Reusable (workflow_call) so a publish workflow can gate releases on a green run.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Resolve the latest published haybarn release once, so the whole matrix tests
+  # the same version (and we never hardcode/pin it). haybarn is public, so the
+  # default token can read it — including on Dependabot PRs.
+  resolve-haybarn:
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.r.outputs.release }}
+    steps:
+      - id: r
+        run: |
+          REL=$(gh release view --repo Query-farm-haybarn/haybarn --json tagName --jq .tagName)
+          echo "release=$REL" >> "$GITHUB_OUTPUT"
+          echo "Latest haybarn release: $REL"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  unit:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          check-latest: true
+      - name: Build
+        run: go build ./...
+      - name: Run unit tests
+        run: go test ./... -count=1
+
+  integration:
+    needs: resolve-haybarn
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  asset: haybarn_unittest-linux-amd64.zip }
+          - { os: macos-latest,   asset: haybarn_unittest-osx-arm64.zip }
+          - { os: windows-latest, asset: haybarn_unittest-windows-amd64.zip }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        # Git Bash on Windows; the integration runner is a bash script.
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          check-latest: true
+
+      - name: Build the easter worker binary
+        run: go build -o vgi-easter-go .
+
+      - name: Download haybarn-unittest
+        run: |
+          gh release download "$HAYBARN_RELEASE" \
+            --repo Query-farm-haybarn/haybarn \
+            --pattern '${{ matrix.asset }}' \
+            --output haybarn-unittest.zip --clobber
+          mkdir -p hb && unzip -o -q haybarn-unittest.zip -d hb
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HAYBARN_RELEASE: ${{ needs.resolve-haybarn.outputs.release }}
+
+      - name: Resolve runner + worker paths
+        run: |
+          # Absolute paths: run-integration.sh cd's into a staging dir before
+          # invoking the runner, so relative paths would not resolve. The worker
+          # LOCATION is consumed by the (native) extension process, so on Windows
+          # it must be a native path to the .exe launcher.
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            UNITTEST="$PWD/$(find hb -name 'haybarn-unittest.exe' -type f | head -1)"
+            WORKER=$(cygpath -w "$PWD/vgi-easter-go.exe")
+          else
+            UNITTEST="$PWD/$(find hb -name 'haybarn-unittest' -type f | head -1)"
+            chmod +x "$UNITTEST"
+            WORKER="$PWD/vgi-easter-go"
+          fi
+          echo "HAYBARN_UNITTEST=$UNITTEST" >> "$GITHUB_ENV"
+          echo "VGI_EASTER_WORKER=$WORKER" >> "$GITHUB_ENV"
+
+      - name: Run extension integration suite
+        run: ci/run-integration.sh

@@ -1,0 +1,52 @@
+# name: test/sql/easter_function.test
+# description: Test the easter_date scalar function
+# group: [vgi_easter]
+
+require-env VGI_EASTER_WORKER
+
+require vgi
+
+require httpfs
+
+statement ok
+ATTACH 'easter' AS easter (TYPE vgi, LOCATION '${VGI_EASTER_WORKER}');
+
+# ============================================================================
+# Scalar evaluation
+# ============================================================================
+
+# Single known year
+query I
+SELECT easter.main.easter_date(2025);
+----
+2025-04-20
+
+# A handful of known Western Easter dates
+query II
+SELECT year, easter.main.easter_date(year) AS easter
+FROM (VALUES (2023), (2024), (2025), (2026)) t(year)
+ORDER BY year;
+----
+2023	2023-04-09
+2024	2024-03-31
+2025	2025-04-20
+2026	2026-04-05
+
+# Output column is a DATE
+query I
+SELECT typeof(easter.main.easter_date(2025));
+----
+DATE
+
+# Null propagation
+query I
+SELECT easter.main.easter_date(NULL::BIGINT) IS NULL;
+----
+true
+
+# ============================================================================
+# Cleanup
+# ============================================================================
+
+statement ok
+DETACH easter;

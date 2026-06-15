@@ -1,0 +1,46 @@
+# name: test/sql/easter_catalog.test
+# description: Test VGI catalog discovery and ATTACH for the easter worker
+# group: [vgi_easter]
+
+require-env VGI_EASTER_WORKER
+
+require vgi
+
+require httpfs
+
+# ============================================================================
+# Catalog discovery
+# ============================================================================
+
+# Worker should expose the "easter" catalog
+query I
+SELECT catalog FROM vgi_catalogs('${VGI_EASTER_WORKER}');
+----
+easter
+
+# The catalog advertises a stable data version. (implementation_version is the
+# git SHA from VGI_EASTER_GIT_COMMIT, which varies, so it is not asserted here.)
+query I
+SELECT data_version_spec FROM vgi_catalogs('${VGI_EASTER_WORKER}');
+----
+1.0.0
+
+# ============================================================================
+# ATTACH and schema discovery
+# ============================================================================
+
+statement ok
+ATTACH 'easter' AS easter (TYPE vgi, LOCATION '${VGI_EASTER_WORKER}');
+
+# Should have a "main" schema
+query II
+SELECT catalog_name, schema_name FROM information_schema.schemata WHERE catalog_name = 'easter';
+----
+easter	main
+
+# ============================================================================
+# Cleanup
+# ============================================================================
+
+statement ok
+DETACH easter;

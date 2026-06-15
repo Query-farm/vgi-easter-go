@@ -1,0 +1,22 @@
+# Copyright 2026 Query Farm LLC - https://query.farm
+#
+# Fly.io deployment for the easter VGI worker's HTTP transport (Go port). DuckDB
+# clients attach it over https://vgi-easter-go.fly.dev — e.g.
+#   INSTALL vgi FROM community; LOAD vgi;
+#   ATTACH 'easter' (TYPE 'vgi', LOCATION 'https://vgi-easter-go.fly.dev');
+app = "vgi-easter-go"
+primary_region = "iad"
+
+[build]
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Scale to zero: stop when idle, auto-start on the next request.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

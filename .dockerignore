@@ -1,0 +1,11 @@
+.git
+.github
+ci
+test
+*_test.go
+vgi-easter-go
+vgi-easter-go.exe
+.DS_Store
+fly.toml
+duckdb_unittest_tempdir
+hb
