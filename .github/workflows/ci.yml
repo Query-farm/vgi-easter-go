@@ -78,7 +78,15 @@ jobs:
           check-latest: true
 
       - name: Build the easter worker binary
-        run: go build -o vgi-easter-go .
+        run: |
+          # `go build -o <name>` writes exactly <name>; it does NOT append .exe
+          # on Windows. The extension launches the LOCATION as a native command,
+          # so the Windows binary must actually be named .exe (see path step).
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            go build -o vgi-easter-go.exe .
+          else
+            go build -o vgi-easter-go .
+          fi
 
       - name: Download haybarn-unittest
         run: |
