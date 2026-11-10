@@ -33,9 +33,17 @@ jobs:
     steps:
       - id: r
         run: |
-          REL=$(gh release view --repo Query-farm-haybarn/haybarn --json tagName --jq .tagName)
+          # haybarn 2.0 is RC-only, so `gh release view` (no tag) still returns the
+          # 1.5 line: pick the newest haybarn-v2.0.* tag (its community `vgi`
+          # extension is the one that speaks the worker's VGI protocol vgi.v3 / 3.2).
+          REL=$(gh release list --repo Query-farm-haybarn/haybarn --limit 30 --json tagName \
+            --jq '[.[].tagName | select(startswith("haybarn-v2.0"))][0]')
+          if [ -z "$REL" ] || [ "$REL" = "null" ]; then
+            echo "::error::no haybarn-v2.0.* release found" >&2
+            exit 1
+          fi
           echo "release=$REL" >> "$GITHUB_OUTPUT"
-          echo "Latest haybarn release: $REL"
+          echo "Latest haybarn 2.0 release: $REL"
         env:
           GH_TOKEN: ${{ github.token }}
 
@@ -49,7 +57,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.26'
           check-latest: true
       - name: Build
         run: go build ./...
@@ -74,7 +82,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.26'
           check-latest: true
 
       - name: Build the easter worker binary
